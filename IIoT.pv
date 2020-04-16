@@ -1,0 +1,210 @@
+(*--
+The Proverif code of the proposed scheme in "A Secure Authentication Scheme with Forward Secrecy for Industrial Internet of Things Using Rabin Cryptosystem".
+
+Environmental requirements
+Programs can run under Windows, Linux, and Macs. 
+Install Proverif 1.96, download Address: http://proverif.inria.fr/
+No additional libraries are required. 
+ProVerif is a command-line tool which can be executed using the syntax:
+           ./proverif [options] hfilenamei
+
+Programs can also run online for ProVerif.
+Address: http://proverif16.paris.inria.fr/index.php
+Copy your code to the input box and press the execution key to verify the scheme.
+--*)
+
+(*--The two public channel--*)
+free ch1: channel.
+free ch2: channel.
+
+(*--The basic type--*)
+type Participant.
+type nonce.
+type key.
+type integer.
+type time.
+type N.
+type P.
+type Q.
+
+(*--Hash operation--*) 
+fun Hash(bitstring): bitstring.
+
+(*--XOR operation--*)
+fun XOR(bitstring, bitstring): bitstring.
+equation forall x: bitstring, y: bitstring;
+XOR(XOR(x, y), y) = x.
+
+(*--Concat operation--*)
+fun Con(bitstring, bitstring): bitstring.
+
+(*--Modulo operation--*)
+fun Mod(bitstring, N): bitstring.
+
+fun RabinEnc(bitstring,N): bitstring.
+reduc forall x: bitstring, p: P, q: Q, n: N;
+RabinDec(n, p, q, RabinEnc(x, n))= x.
+
+(*--Shared key encryption--*)
+fun encrypt(bitstring,key): bitstring.
+reduc forall x: bitstring, y: key;
+decrypt(encrypt(x,y),y) = x.
+
+(*--Type convertion--*)
+fun keytobit(key): bitstring   [data,typeConverter].
+fun nontobit(nonce): bitstring [data,typeConverter].
+fun bittokey(bitstring): key   [data,typeConverter].
+fun inttobit(integer): bitstring [data,typeConverter].
+fun timetobit(time): bitstring [data,typeConverter].
+fun ntobit(N): bitstring [data,typeConverter].
+fun ptobit(P): bitstring [data,typeConverter].
+fun qtobit(Q): bitstring [data,typeConverter].
+
+(*--Secrecy assumptions
+not attacker(new KGS).--*)
+
+(*--The basic variables--*)
+free User,IMG,SN: Participant. (*---three entities in the proposed scheme--*)
+free KGS: bitstring[private].  (*---the shared key between IMG and the sensor node--*)
+
+
+(*--Authentication queries--*)
+event UGstart(Participant).
+event UGend(Participant).
+event GUstart(Participant).
+event GUend(Participant).
+event GSstart(Participant).
+event GSend(Participant).
+event SGstart(Participant).
+event SGend(Participant).
+
+query t: Participant; inj-event(UGend(t)) ==> inj-event(UGstart(t)).
+query t: Participant; inj-event(GUend(t)) ==> inj-event(GUstart(t)).
+query t: Participant; inj-event(GSend(t)) ==> inj-event(GSstart(t)).
+query t: Participant; inj-event(SGend(t)) ==> inj-event(SGstart(t)).
+
+(*--Queries--*)
+free SKUser, SKSensor: bitstring [private].
+query attacker(SKUser);
+      attacker(SKSensor).
+
+(*--The process of the user is modeled as follows--*)
+let processUser(IDi: bitstring, PWi: bitstring, Bi: bitstring, Ci: bitstring, Di: bitstring, Ei: bitstring, N1: N, M: N, SIDk: bitstring) =
+		let (ai: bitstring)= XOR(Ei, Hash(Con(IDi,PWi))) in
+		let (Ai: bitstring)= Hash(Con(PWi,ai)) in	
+		let (bi: bitstring)= XOR(Ai,Ci) in		
+        let xBi = Mod(Hash(XOR(Hash(Con(IDi,bi)),Ai)),M) in
+        if xBi = Bi then
+      
+	      event GUstart(IMG);
+		  new RU: nonce;
+	      new T1: time;
+	      new N2: N;	
+          new p2: P;		  
+		  new q2: Q;
+		  
+		  let (Fi: bitstring)= XOR(Ai, Di) in
+	      let (M1: bitstring) = Mod(RabinEnc(Con(Con(Con(Con(IDi,SIDk),nontobit(RU)),ntobit(N2)),bi),N1),N1) in
+	      let M2 = Hash(Con(Con(Con(Con(Con(IDi,nontobit(RU)),Fi), ntobit(N2)),M1),timetobit(T1))) in
+(*UO1*) out(ch1, (M1, M2, T1, true));  
+(*UR1*) in(ch1, (M5:bitstring, M7:bitstring, M8:bitstring));
+
+  	      let (xM8:bitstring) = Hash(Con(Con(Con(M5,M7),Fi),nontobit(RU))) in
+		  if xM8 = M8 then	  
+
+	      let (IDi:bitstring, SIDk:bitstring, RS:nonce) = Mod(RabinDec(N2, p2, q2, M5),N2) in	  
+		  let xsk: bitstring = Hash(Con(Con(Con(Con(Con(IDi,SIDk),nontobit(RU)),nontobit(RS)),M1),M5)) in	  
+	      let xM7 = Hash(Con(Con(Con(Con(Con(xsk,IDi),SIDk),nontobit(RU)),nontobit(RS)),M5)) in
+	      if xM7 = M7 then
+		  (* OK *)	  		  	
+          event UGend(User);
+	      out(ch1, encrypt(SKUser, bittokey(xsk))).
+		  
+(*--The process of $IMG$ is modeled as follows --*)
+let processIMG(N1: N, p1: P, q1: Q) =     
+        in(ch1, (M1: bitstring, M2:bitstring, T1: time));     
+	
+		
+		let (IDi: bitstring, SIDk: bitstring, RU: nonce, N2: N, bi: bitstring)= Mod(RabinDec(N1, p1, q1, M1),N1) in
+		  
+		let (Fi: bitstring)= Hash(Con(Con(Con(IDi, ptobit(p1)),qtobit(q1)),bi)) in	
+		
+		event UGstart(User);
+		
+		let xM2 = Hash(Con(Con(Con(Con(Con(IDi,nontobit(RU)),Fi),ntobit(N2)),M1),timetobit(T1))) in	
+		if xM2 = M2 then
+		
+
+	      new RG: nonce;
+		  new T2: time;
+	      event SGstart(SN);
+		  
+		  let KGS: bitstring= Hash(Con(Con(SIDk,ptobit(p1)),qtobit(q1))) in
+	      let M3 = XOR(Con(Con(Con(Con(Con(IDi,SIDk),nontobit(RU)),nontobit(RG)),M1),ntobit(N2)),Hash(Con(KGS,timetobit(T2)))) in
+	      let M4 = Hash(Con(Con(Con(Con(Con(IDi,SIDk),nontobit(RG)),KGS),ntobit(N2)),timetobit(T2))) in
+        out(ch2, (M3, M4, T2, true));
+
+        in(ch2, (M5: bitstring, M6: bitstring, M7: bitstring)); 
+
+		  let xM6 = Hash(Con(Con(Con(Con(IDi,SIDk),nontobit(RG)),KGS),M5)) in
+	      if xM6 = M6 then	  
+	      (* OK *)
+	      event GSend(IMG);
+
+        out(ch2, true);
+	      let M8 = Hash(Con(Con(Con(M5,M7),Fi),nontobit(RU))) in			  
+        out(ch1, (M5,M7,M8,true));
+
+        event GUend(IMG);
+	    (* OK *)     
+	    out(ch1, true).	  
+		
+(*--The process of the sensor node is modeled as follows--*)
+let processSN(SIDk:bitstring, KGS:bitstring) = 
+        in(ch2, (M3: bitstring, M4: bitstring, T2: time));    
+        event GSstart(IMG);
+
+	      let (IDi: bitstring, xSIDk: bitstring, RU:nonce, RG:nonce, M1: bitstring, N2:N) = XOR(M3,Hash(Con(KGS,timetobit(T2)))) in
+		  if xSIDk = SIDk then
+	      let xM4=  Hash(Con(Con(Con(Con(Con(IDi, SIDk), nontobit(RG)),KGS),ntobit(N2)),timetobit(T2))) in
+	      if xM4 = M4 then
+		  
+		new RS: nonce;
+		
+		let M5: bitstring = Mod(RabinEnc(Con(Con(IDi,SIDk),nontobit(RS)),N2),N2) in
+		let xsk: bitstring = Hash(Con(Con(Con(Con(Con(IDi,SIDk),nontobit(RU)),nontobit(RS)),M1),M5)) in
+		let M6 = Hash(Con(Con(Con(Con(IDi,SIDk),nontobit(RG)),KGS),M5)) in
+	    let M7 = Hash(Con(Con(Con(Con(Con(xsk,IDi),SIDk),nontobit(RU)),nontobit(RS)),M5)) in
+		  
+        out(ch2, (M5, M6, M7, true)); 
+        event SGend(SN);
+	      (* OK *)
+        out(ch2, encrypt(SKSensor, bittokey(xsk))).
+
+(*--Start process--*)
+process
+	new IDi: bitstring; 
+	new PWi: bitstring;
+	new SIDk: bitstring; 
+	new KGS: bitstring; 
+	new N1: N;	
+	new M: N;
+	new p1: P;	
+	new q1: Q;		
+	new Bi: bitstring;	
+	new Ci: bitstring;
+	new Di: bitstring;	
+	new Ei: bitstring;
+	
+		let ai = XOR(Ei, Hash(Con(IDi,PWi))) in
+		let Ai = Hash(Con(PWi,ai)) in	
+		let bi = XOR(Ai,Ci) in		
+        let xBi = Mod(Hash(XOR(Hash(Con(IDi,bi)),Ai)),M) in
+	(
+          (*-- Launch an unbounded number of sessions of the user --*)
+          (!processUser(IDi,PWi,Bi,Ci,Di,Ei,N1,M,SIDk)) | 
+          (*-- Launch an unbounded number of sessions of the IMG--*)
+          (!processIMG(N1,p1,q1)) |
+          (*-- Launch an unbounded number of sessions of the SN--*)
+          (!processSN(SIDk,KGS)) 
+  )
